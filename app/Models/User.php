@@ -45,4 +45,20 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+
+    /**
+     * Get the user's preferences.
+     */
+    public function preferences()
+    {
+        return $this->hasOne(UserPreference::class);
+    }
+
+    /**
+     * Get the user's recommended books.
+     */
+    public function recommendedBooks()
+    {
+        return $this->hasMany(RecommendedBook::class);
+    }
 }

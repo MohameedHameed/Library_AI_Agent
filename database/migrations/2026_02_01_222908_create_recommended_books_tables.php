@@ -13,11 +13,15 @@ return new class extends Migration
     {
         Schema::create('recommended_books_tables', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('book_id')->constrained()->cascadeOnDelete(); 
-            $table->string('source')->nullable();
-            $table->integer('score')->nullable();
+            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+            $table->string('book_api_id'); // Store the book ID from the external API
+            $table->json('book_data')->nullable(); // Store book details from API as JSON
+            $table->string('source')->nullable(); // e.g., 'ai_recommendation', 'user_search', etc.
+            $table->integer('score')->nullable(); // Recommendation score
             $table->timestamps();
+
+            // Index for faster lookups
+            $table->index(['user_id', 'book_api_id']);
         });
     }
 
