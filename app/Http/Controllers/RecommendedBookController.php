@@ -7,6 +7,7 @@ use App\Services\BookApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+
 class RecommendedBookController extends Controller
 {
     protected $bookApiService;
@@ -100,7 +101,7 @@ class RecommendedBookController extends Controller
      */
     public function search(Request $request)
     {
-        $query = $request->input('search', '');
+        $query = $request->input('query', '');
 
         if (empty($query)) {
             return back()->with('error', 'الرجاء إدخال كلمة بحث');
