@@ -6,7 +6,7 @@ use App\Models\RecommendedBook;
 use App\Services\BookApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-
+use Illuminate\Support\Facades\Log;
 class RecommendedBookController extends Controller
 {
     protected $bookApiService;
@@ -43,6 +43,22 @@ class RecommendedBookController extends Controller
                 ->with('error', 'الرجاء إعداد تفضيلاتك أولاً للحصول على توصيات مخصصة');
         }
 
+        Log::info('Generating recommendations for user', [
+            'user_id' => $user->id,
+            'preferences' => [
+                'favorite_genres' => $preferences->favorite_genres,
+                'preferred_theme' => $preferences->preferred_theme,
+                'difficulty_level' => $preferences->difficulty_level,
+            ]
+        ]);
+
+        // Delete old AI recommendations (keep user-saved books)
+        $deletedCount = RecommendedBook::where('user_id', $user->id)
+            ->where('source', 'ai_recommendation')
+            ->delete();
+
+        Log::info('Deleted old AI recommendations', ['count' => $deletedCount]);
+
         // Get recommendations from API based on preferences
         $books = $this->bookApiService->getRecommendations([
             'favorite_genres' => $preferences->favorite_genres,
@@ -50,23 +66,33 @@ class RecommendedBookController extends Controller
             'difficulty_level' => $preferences->difficulty_level,
         ]);
 
-        // Save recommendations to database
-        foreach ($books as $index => $book) {
-            RecommendedBook::updateOrCreate(
-                [
-                    'user_id' => $user->id,
-                    'book_api_id' => $book['api_id'],
-                ],
-                [
-                    'book_data' => $book,
-                    'source' => 'ai_recommendation',
-                    'score' => 100 - $index, // Higher score for earlier results
-                ]
-            );
+        Log::info('API returned books', [
+            'count' => count($books),
+            'sample' => !empty($books) ? array_slice($books, 0, 2) : []
+        ]);
+
+        // Check if we got any results
+        if (empty($books)) {
+            Log::warning('No books returned from API');
+            return redirect()->route('recommendations.index')
+                ->with('error', 'لم نتمكن من العثور على توصيات مناسبة. جرب تعديل تفضيلاتك.');
         }
 
+        // Save new recommendations to database
+        foreach ($books as $index => $book) {
+            RecommendedBook::create([
+                'user_id' => $user->id,
+                'book_api_id' => $book['api_id'],
+                'book_data' => $book,
+                'source' => 'ai_recommendation',
+                'score' => 100 - $index, // Higher score for earlier results
+            ]);
+        }
+
+        Log::info('Saved recommendations to database', ['count' => count($books)]);
+
         return redirect()->route('recommendations.index')
-            ->with('success', 'تم إنشاء توصيات جديدة بناءً على تفضيلاتك');
+            ->with('success', 'تم إنشاء ' . count($books) . ' توصية جديدة بناءً على تفضيلاتك المحدثة! 🎉');
     }
 
     /**

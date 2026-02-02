@@ -13,14 +13,9 @@
         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6 text-gray-900">
-                    <form action="{{ route('books.search') }}" method="GET">
+                    <form>
                         <div class="flex justify-center gap-5">
-                            <input
-                                type="text"
-                                name="search"
-                                placeholder="ابحث عن الكتاب الذي تريده"
-                                class="border border-gray-300 rounded-lg px-4 py-2 w-96 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                required>
+                            <input type="text" name="search" id="" placeholder="ابحث عن الكتاب الذي تريده">
                             <button class="bg-blue-500 text-white w-32 px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors" type="submit">بحث</button>
 
                         </div>

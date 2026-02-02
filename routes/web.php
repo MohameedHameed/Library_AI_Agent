@@ -13,6 +13,21 @@ Route::get('/dashboard', function () {
     return view('dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
 
+// Test route to check API connectivity
+Route::get('/test-api', function () {
+    $service = new \App\Services\BookApiService();
+
+    // Test search
+    $results = $service->searchBooks('science', 5);
+
+    return response()->json([
+        'test' => 'BookApiService Test',
+        'query' => 'science',
+        'results_count' => count($results),
+        'results' => $results,
+    ]);
+});
+
 Route::middleware('auth')->group(function () {
     // Profile routes
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
