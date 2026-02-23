@@ -30,6 +30,14 @@ class RecommendedBook extends Model
     }
 
     /**
+     * Get all favorites for this recommended book.
+     */
+    public function favorites()
+    {
+        return $this->hasMany(FavoriteBook::class, 'recommended_book_id');
+    }
+
+    /**
      * Get book title from the cached book_data
      */
     public function getBookTitleAttribute()

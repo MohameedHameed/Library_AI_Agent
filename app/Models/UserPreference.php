@@ -12,8 +12,9 @@ class UserPreference extends Model
         'user_id',
         'favorite_genres',
         'preferred_theme',
-        'difficulty_level',
-        'price_range',
+        'publication_year_range',
+        'book_length',
+        'language',
     ];
 
     /**

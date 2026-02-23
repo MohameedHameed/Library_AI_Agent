@@ -18,6 +18,7 @@ return new class extends Migration
             $table->string('preferred_theme')->nullable();
             $table->string('difficulty_level')->nullable();
             $table->string('price_range')->nullable();
+            $table->string('language', 2)->default('ar'); // 'ar' or 'en'
             $table->timestamps();
         });
     }

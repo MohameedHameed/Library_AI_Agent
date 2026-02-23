@@ -9,6 +9,10 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+// Language switcher route
+Route::get('/language/{lang}', [App\Http\Controllers\LanguageController::class, 'switch'])->name('language.switch');
+
+
 Route::get('/dashboard', function () {
     return view('dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
@@ -49,6 +53,11 @@ Route::middleware('auth')->group(function () {
     Route::post('/recommendations', [RecommendedBookController::class, 'store'])->name('recommendations.store');
     Route::get('/recommendations/{id}', [RecommendedBookController::class, 'show'])->name('recommendations.show');
     Route::delete('/recommendations/{id}', [RecommendedBookController::class, 'destroy'])->name('recommendations.destroy');
+    
+    // Favorite books routes
+    Route::get('/favorites', [App\Http\Controllers\FavoriteBookController::class, 'index'])->name('favorites.index');
+    Route::post('/favorites', [App\Http\Controllers\FavoriteBookController::class, 'store'])->name('favorites.store');
+    Route::delete('/favorites/{id}', [App\Http\Controllers\FavoriteBookController::class, 'destroy'])->name('favorites.destroy');
 });
 
 require __DIR__ . '/auth.php';

@@ -36,6 +36,9 @@ class RecommendedBookController extends Controller
      */
     public function getRecommendations()
     {
+        // Increase execution time limit to prevent timeout when calling multiple APIs
+        set_time_limit(90); // 90 seconds should be enough for all API calls
+        
         $user = Auth::user();
         $preferences = $user->preferences;
 
@@ -49,22 +52,28 @@ class RecommendedBookController extends Controller
             'preferences' => [
                 'favorite_genres' => $preferences->favorite_genres,
                 'preferred_theme' => $preferences->preferred_theme,
-                'difficulty_level' => $preferences->difficulty_level,
+                'publication_year_range' => $preferences->publication_year_range,
+                'book_length' => $preferences->book_length,
+                'language' => $preferences->language ?? 'ar',
             ]
         ]);
 
-        // Delete old AI recommendations (keep user-saved books)
+        // Delete old AI recommendations ONLY if they are NOT favorited
+        // This prevents losing user's favorite books when generating new recommendations
         $deletedCount = RecommendedBook::where('user_id', $user->id)
             ->where('source', 'ai_recommendation')
+            ->whereDoesntHave('favorites') // Only delete if NOT favorited
             ->delete();
 
-        Log::info('Deleted old AI recommendations', ['count' => $deletedCount]);
+        Log::info('Deleted old AI recommendations (excluding favorited)', ['count' => $deletedCount]);
 
         // Get recommendations from API based on preferences
         $books = $this->bookApiService->getRecommendations([
             'favorite_genres' => $preferences->favorite_genres,
             'preferred_theme' => $preferences->preferred_theme,
-            'difficulty_level' => $preferences->difficulty_level,
+            'publication_year_range' => $preferences->publication_year_range,
+            'book_length' => $preferences->book_length,
+            'language' => $preferences->language ?? 'ar', // Pass language preference
         ]);
 
         Log::info('API returned books', [

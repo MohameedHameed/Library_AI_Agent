@@ -17,30 +17,59 @@ class BookApiService
      * 
      * @param string $query Search query
      * @param int $maxResults Maximum number of results
+     * @param string $language Language filter ('ar' for Arabic, 'en' for English)
      * @return array
      */
-    public function searchBooks($query, $maxResults = 20)
+    public function searchBooks($query, $maxResults = 20, $language = 'ar')
     {
         try {
-            $cacheKey = "book_search_" . md5($query . $maxResults);
+            $cacheKey = "book_search_" . md5($query . $maxResults . $language);
 
-            return Cache::remember($cacheKey, 3600, function () use ($query, $maxResults) {
+            return Cache::remember($cacheKey, 3600, function () use ($query, $maxResults, $language) {
+                // Increase execution time for this operation
+                set_time_limit(60);
+                
                 $books = [];
 
-                // Search OpenLibrary
-                $openLibraryBooks = $this->searchOpenLibrary($query, $maxResults);
-                $books = array_merge($books, $openLibraryBooks);
+                Log::info('Starting book search across all APIs', [
+                    'query' => $query,
+                    'language' => $language
+                ]);
+
+                // Search OpenLibrary (fastest, try first)
+                try {
+                    $openLibraryBooks = $this->searchOpenLibrary($query, $maxResults, $language);
+                    Log::info('OpenLibrary results', ['count' => count($openLibraryBooks)]);
+                    $books = array_merge($books, $openLibraryBooks);
+                } catch (\Exception $e) {
+                    Log::warning('OpenLibrary search failed', ['error' => $e->getMessage()]);
+                }
 
                 // Search Gutenberg
-                $gutenbergBooks = $this->searchGutenberg($query, $maxResults);
-                $books = array_merge($books, $gutenbergBooks);
+                try {
+                    $gutenbergBooks = $this->searchGutenberg($query, $maxResults, $language);
+                    Log::info('Gutenberg results', ['count' => count($gutenbergBooks)]);
+                    $books = array_merge($books, $gutenbergBooks);
+                } catch (\Exception $e) {
+                    Log::warning('Gutenberg search failed', ['error' => $e->getMessage()]);
+                }
 
                 // Search Google Books (excellent Arabic coverage)
-                $googleBooks = $this->searchGoogleBooks($query, $maxResults);
-                $books = array_merge($books, $googleBooks);
+                try {
+                    $googleBooks = $this->searchGoogleBooks($query, $maxResults, $language);
+                    Log::info('Google Books results', ['count' => count($googleBooks)]);
+                    $books = array_merge($books, $googleBooks);
+                } catch (\Exception $e) {
+                    Log::warning('Google Books search failed', ['error' => $e->getMessage()]);
+                }
+
+                Log::info('Total books before deduplication', ['count' => count($books)]);
 
                 // Remove duplicates and limit results
                 $books = $this->removeDuplicates($books);
+
+                Log::info('Total books after deduplication', ['count' => count($books)]);
+
                 return array_slice($books, 0, $maxResults);
             });
         } catch (\Exception $e) {
@@ -54,24 +83,29 @@ class BookApiService
      * 
      * @param string $query
      * @param int $limit
+     * @param string $language 'ar' for Arabic, 'en' for English
      * @return array
      */
-    protected function searchOpenLibrary($query, $limit = 10)
+    protected function searchOpenLibrary($query, $limit = 10, $language = 'ar')
     {
         try {
-            // First try with Arabic language filter
+            // Map language codes: 'ar' => 'ara', 'en' => 'eng'
+            $langCode = $language === 'en' ? 'eng' : 'ara';
+            
+            // First try with language filter
             $response = Http::timeout(10)->get("{$this->openLibraryUrl}/search.json", [
                 'q' => $query,
                 'limit' => $limit,
-                'language' => 'ara',
+                'language' => $langCode,
             ]);
 
             if ($response->successful()) {
                 $data = $response->json();
                 $results = $data['docs'] ?? [];
 
-                Log::info('OpenLibrary search with Arabic filter', [
+                Log::info('OpenLibrary search with language filter', [
                     'query' => $query,
+                    'language' => $langCode,
                     'count' => count($results)
                 ]);
 
@@ -81,8 +115,8 @@ class BookApiService
                 }
             }
 
-            // If no results with Arabic filter, try without language filter
-            Log::info('No Arabic results, trying without language filter');
+            // If no results with language filter, try without language filter
+            Log::info('No results with language filter, trying without filter');
             $response = Http::timeout(10)->get("{$this->openLibraryUrl}/search.json", [
                 'q' => $query,
                 'limit' => $limit,
@@ -110,23 +144,28 @@ class BookApiService
      * 
      * @param string $query
      * @param int $limit
+     * @param string $language 'ar' for Arabic, 'en' for English
      * @return array
      */
-    protected function searchGutenberg($query, $limit = 10)
+    protected function searchGutenberg($query, $limit = 10, $language = 'ar')
     {
         try {
-            // First try with Arabic language filter
+            // Gutenberg uses 'ar' for Arabic, 'en' for English
+            $langCode = $language === 'en' ? 'en' : 'ar';
+            
+            // First try with language filter
             $response = Http::timeout(10)->get("{$this->gutenbergUrl}/books", [
                 'search' => $query,
-                'languages' => 'ar',
+                'languages' => $langCode,
             ]);
 
             if ($response->successful()) {
                 $data = $response->json();
                 $results = array_slice($data['results'] ?? [], 0, $limit);
 
-                Log::info('Gutenberg search with Arabic filter', [
+                Log::info('Gutenberg search with language filter', [
                     'query' => $query,
+                    'language' => $langCode,
                     'count' => count($results)
                 ]);
 
@@ -136,8 +175,8 @@ class BookApiService
                 }
             }
 
-            // If no results with Arabic filter, try without language filter
-            Log::info('No Arabic results from Gutenberg, trying without language filter');
+            // If no results with language filter, try without language filter
+            Log::info('No results from Gutenberg with language filter, trying without filter');
             $response = Http::timeout(10)->get("{$this->gutenbergUrl}/books", [
                 'search' => $query,
             ]);
@@ -165,24 +204,46 @@ class BookApiService
      * 
      * @param string $query
      * @param int $limit
+     * @param string $language 'ar' for Arabic, 'en' for English
      * @return array
      */
-    protected function searchGoogleBooks($query, $limit = 10)
+    protected function searchGoogleBooks($query, $limit = 10, $language = 'ar')
     {
         try {
-            // First try with Arabic language restriction
-            $response = Http::timeout(10)->get("{$this->googleBooksUrl}/volumes", [
+            $apiKey = env('GOOGLE_BOOKS_API_KEY');
+
+            // If no API key, skip Google Books to avoid rate limiting
+            if (empty($apiKey)) {
+                Log::info('Google Books API key not configured, skipping');
+                return [];
+            }
+
+            // Google Books uses 'ar' for Arabic, 'en' for English
+            $langCode = $language === 'en' ? 'en' : 'ar';
+
+            // First try with language restriction
+            // Only use paid-ebooks filter for English (Arabic has very few paid books)
+            $params = [
                 'q' => $query,
                 'maxResults' => $limit,
-                'langRestrict' => 'ar', // Arabic books
-            ]);
+                'langRestrict' => $langCode,
+                'key' => $apiKey,
+            ];
+            
+            // Add paid filter only for English to get more paid books
+            if ($language === 'en') {
+                $params['filter'] = 'paid-ebooks';
+            }
+            
+            $response = Http::timeout(10)->get("{$this->googleBooksUrl}/volumes", $params);
 
             if ($response->successful()) {
                 $data = $response->json();
                 $results = $data['items'] ?? [];
 
-                Log::info('Google Books search with Arabic filter', [
+                Log::info('Google Books search with language filter', [
                     'query' => $query,
+                    'language' => $langCode,
                     'count' => count($results)
                 ]);
 
@@ -192,12 +253,21 @@ class BookApiService
                 }
             }
 
-            // If no results with Arabic filter, try without language restriction
-            Log::info('No Arabic results from Google Books, trying without language filter');
-            $response = Http::timeout(10)->get("{$this->googleBooksUrl}/volumes", [
+            // If no results with language filter, try without language restriction
+            Log::info('No results from Google Books with language filter, trying without filter');
+            
+            $params = [
                 'q' => $query,
                 'maxResults' => $limit,
-            ]);
+                'key' => $apiKey,
+            ];
+            
+            // Add paid filter only for English
+            if ($language === 'en') {
+                $params['filter'] = 'paid-ebooks';
+            }
+            
+            $response = Http::timeout(10)->get("{$this->googleBooksUrl}/volumes", $params);
 
             if ($response->successful()) {
                 $data = $response->json();
@@ -208,10 +278,16 @@ class BookApiService
                 return $this->formatGoogleBooksResults($data['items'] ?? []);
             }
 
-            Log::warning('Google Books search failed');
+            Log::warning('Google Books search failed', [
+                'status' => $response->status(),
+                'body' => $response->body()
+            ]);
             return [];
         } catch (\Exception $e) {
-            Log::error('Google Books search error: ' . $e->getMessage());
+            Log::error('Google Books search error: ' . $e->getMessage(), [
+                'query' => $query,
+                'exception' => get_class($e)
+            ]);
             return [];
         }
     }
@@ -322,6 +398,40 @@ class BookApiService
             ? "https://covers.openlibrary.org/b/id/{$coverId}-M.jpg"
             : null;
 
+        // Get the most accurate publication date
+        // Priority: publish_year (most recent) > publish_date > first_publish_year (oldest)
+        $publishedDate = '';
+        if (!empty($doc['publish_year'])) {
+            // publish_year is an array of years from all editions, get the most recent
+            $years = is_array($doc['publish_year']) ? $doc['publish_year'] : [$doc['publish_year']];
+            $publishedDate = max($years); // Get most recent year
+        } elseif (!empty($doc['publish_date'])) {
+            // publish_date is an array of dates, get the most recent
+            $dates = is_array($doc['publish_date']) ? $doc['publish_date'] : [$doc['publish_date']];
+            // Extract years from dates and get the most recent
+            $years = array_map(function($date) {
+                // Try to extract 4-digit year from various date formats
+                if (preg_match('/(\d{4})/', $date, $matches)) {
+                    return (int)$matches[1];
+                }
+                return 0;
+            }, $dates);
+            $publishedDate = max($years) ?: '';
+        } elseif (!empty($doc['first_publish_year'])) {
+            // Fallback to first publish year if nothing else available
+            $publishedDate = $doc['first_publish_year'];
+        }
+        
+        // Get the most accurate page count
+        // Priority: edition_count weighted average > number_of_pages_median > first available
+        $pageCount = 0;
+        if (!empty($doc['number_of_pages_median'])) {
+            $pageCount = $doc['number_of_pages_median'];
+        } elseif (!empty($doc['edition_count']) && !empty($doc['number_of_pages'])) {
+            // If we have multiple editions, use the median
+            $pageCount = $doc['number_of_pages_median'] ?? 0;
+        }
+
         return [
             'api_id' => 'openlibrary:' . $workId,
             'source' => 'OpenLibrary',
@@ -332,8 +442,8 @@ class BookApiService
                 ? ($doc['description']['value'] ?? '')
                 : ($doc['description'] ?? ''),
             'publisher' => isset($doc['publisher']) ? (is_array($doc['publisher']) ? implode(', ', $doc['publisher']) : $doc['publisher']) : '',
-            'published_date' => $doc['first_publish_year'] ?? '',
-            'page_count' => $doc['number_of_pages_median'] ?? 0,
+            'published_date' => $publishedDate,
+            'page_count' => $pageCount,
             'categories' => $doc['subject'] ?? [],
             'language' => isset($doc['language']) ? (is_array($doc['language']) ? implode(', ', $doc['language']) : $doc['language']) : 'ar',
             'cover_image' => $coverImage,
@@ -371,6 +481,19 @@ class BookApiService
             $book['subjects'] ?? [],
             $book['bookshelves'] ?? []
         );
+        
+        // Gutenberg books are public domain, typically old books
+        // Most don't have publication dates in API, but we can infer from death_year
+        $publishedDate = '';
+        if (!empty($book['authors'])) {
+            foreach ($book['authors'] as $author) {
+                if (!empty($author['death_year'])) {
+                    // Estimate publication around author's death year
+                    $publishedDate = $author['death_year'];
+                    break;
+                }
+            }
+        }
 
         return [
             'api_id' => 'gutenberg:' . ($book['id'] ?? ''),
@@ -380,7 +503,7 @@ class BookApiService
             'author' => implode(', ', $authors),
             'description' => '', // Gutenberg doesn't provide descriptions
             'publisher' => 'Project Gutenberg',
-            'published_date' => '',
+            'published_date' => $publishedDate,
             'page_count' => 0,
             'categories' => $subjects,
             'language' => isset($book['languages']) ? implode(', ', $book['languages']) : 'ar',
@@ -413,6 +536,31 @@ class BookApiService
     protected function formatGoogleBook($item)
     {
         $volumeInfo = $item['volumeInfo'] ?? [];
+        $saleInfo = $item['saleInfo'] ?? [];
+        
+        // Extract price information
+        $price = null;
+        $currency = null;
+        $saleability = $saleInfo['saleability'] ?? 'NOT_FOR_SALE';
+        
+        if ($saleability === 'FOR_SALE' && isset($saleInfo['retailPrice'])) {
+            $price = $saleInfo['retailPrice']['amount'] ?? null;
+            $currency = $saleInfo['retailPrice']['currencyCode'] ?? 'USD';
+        } elseif ($saleability === 'FREE' || $saleability === 'NOT_FOR_SALE') {
+            $price = 0;
+            $currency = 'FREE';
+        }
+        
+        // Extract only the year from publishedDate
+        // Google Books returns dates in various formats: "2024", "2024-01", "2024-01-15"
+        $publishedDate = '';
+        if (!empty($volumeInfo['publishedDate'])) {
+            $dateString = $volumeInfo['publishedDate'];
+            // Extract 4-digit year
+            if (preg_match('/(\d{4})/', $dateString, $matches)) {
+                $publishedDate = $matches[1];
+            }
+        }
 
         return [
             'api_id' => 'googlebooks:' . ($item['id'] ?? ''),
@@ -422,13 +570,17 @@ class BookApiService
             'author' => isset($volumeInfo['authors']) ? implode(', ', $volumeInfo['authors']) : 'Unknown',
             'description' => $volumeInfo['description'] ?? '',
             'publisher' => $volumeInfo['publisher'] ?? '',
-            'published_date' => $volumeInfo['publishedDate'] ?? '',
+            'published_date' => $publishedDate,
             'page_count' => $volumeInfo['pageCount'] ?? 0,
             'categories' => $volumeInfo['categories'] ?? [],
             'language' => $volumeInfo['language'] ?? 'ar',
             'cover_image' => $volumeInfo['imageLinks']['thumbnail'] ?? null,
             'isbn' => $this->extractIsbnFromGoogle($volumeInfo['industryIdentifiers'] ?? []),
             'preview_link' => $volumeInfo['previewLink'] ?? null,
+            'price' => $price,
+            'currency' => $currency,
+            'saleability' => $saleability,
+            'buy_link' => $saleInfo['buyLink'] ?? null,
         ];
     }
 
@@ -479,45 +631,293 @@ class BookApiService
      */
     public function getRecommendations($preferences)
     {
-        $query = '';
-
-        // Build query from preferences (supports both Arabic and English)
+        $keywords = [];
+        
+        // Extract language preference (default to Arabic)
+        $language = $preferences['language'] ?? 'ar';
+        
+        // Keyword translation map (Arabic to English)
+        $translationMap = [
+            'روايات' => 'novels',
+            'تاريخ' => 'history',
+            'علوم' => 'science',
+            'فلسفة' => 'philosophy',
+            'أدب' => 'literature',
+            'شعر' => 'poetry',
+            'سيرة ذاتية' => 'biography',
+            'تطوير ذات' => 'self development',
+            'دين' => 'religion',
+            'سياسة' => 'politics',
+            'اقتصاد' => 'economics',
+            'فن' => 'art',
+            'تكنولوجيا' => 'technology',
+            'مغامرات' => 'adventure',
+            'رومانسية' => 'romance',
+            'جريمة' => 'crime',
+            'خيال علمي' => 'science fiction',
+            'فانتازيا' => 'fantasy',
+            'رعب' => 'horror',
+            'تشويق' => 'thriller',
+            'كوميديا' => 'comedy',
+            'دراما' => 'drama',
+            'ثقافة' => 'culture',
+            'تعليمي' => 'educational',
+        ];
+        
+        // Extract keywords from favorite_genres (comma-separated)
         if (!empty($preferences['favorite_genres'])) {
-            $query .= $preferences['favorite_genres'] . ' ';
+            $genres = str_replace(',', ' ', $preferences['favorite_genres']);
+            $genres = trim($genres);
+            
+            // Translate if language is English
+            if ($language === 'en') {
+                $genreWords = explode(' ', $genres);
+                $translatedWords = [];
+                foreach ($genreWords as $word) {
+                    $word = trim($word);
+                    if (!empty($word)) {
+                        $translatedWords[] = $translationMap[$word] ?? $word;
+                    }
+                }
+                $genres = implode(' ', $translatedWords);
+            }
+            
+            $keywords[] = $genres;
         }
-
+        
+        // Extract keywords from preferred_theme (comma-separated)
         if (!empty($preferences['preferred_theme'])) {
-            $query .= $preferences['preferred_theme'] . ' ';
+            $themes = str_replace(',', ' ', $preferences['preferred_theme']);
+            $themes = trim($themes);
+            
+            // Translate if language is English
+            if ($language === 'en') {
+                $themeWords = explode(' ', $themes);
+                $translatedWords = [];
+                foreach ($themeWords as $word) {
+                    $word = trim($word);
+                    if (!empty($word)) {
+                        $translatedWords[] = $translationMap[$word] ?? $word;
+                    }
+                }
+                $themes = implode(' ', $translatedWords);
+            }
+            
+            $keywords[] = $themes;
         }
-
-        $query = trim($query);
-
-        // If no query, use popular topics in both Arabic and English
+        
+        // Combine all keywords into a single query
+        $query = implode(' ', $keywords);
+        $query = preg_replace('/\s+/', ' ', trim($query));
+        
+        // If no query, use popular topics based on language
         if (empty($query)) {
             Log::info('No preferences provided, using default query');
-            $query = 'روايات تاريخ علوم فلسفة novels history science philosophy';
+            $query = $language === 'en' 
+                ? 'novels history science philosophy' 
+                : 'روايات تاريخ علوم فلسفة';
         }
-
+        
         Log::info('Getting recommendations', [
             'query' => $query,
+            'language' => $language,
             'preferences' => $preferences
         ]);
-
-        $books = $this->searchBooks($query, 20);
-
+        
+        // Get books to have enough for filtering (reduced from 40 to 30 for better performance)
+        // This reduces API timeout issues while still providing good variety
+        $allBooks = $this->searchBooks($query, 30, $language);
+        
+        // Separate paid and free books
+        $paidBooks = [];
+        $freeBooks = [];
+        
+        foreach ($allBooks as $book) {
+            if (isset($book['price'])) {
+                if ($book['price'] == 0) {
+                    $freeBooks[] = $book;
+                } else {
+                    $paidBooks[] = $book;
+                }
+            } else {
+                // Books without price info are treated as free (public domain)
+                $freeBooks[] = $book;
+            }
+        }
+        
+        // Filter by book length if specified
+        if (!empty($preferences['book_length'])) {
+            $allBooks = array_merge($paidBooks, $freeBooks);
+            $allBooks = $this->filterByBookLength($allBooks, $preferences['book_length']);
+            
+            // Re-separate after length filtering
+            $paidBooks = [];
+            $freeBooks = [];
+            
+            foreach ($allBooks as $book) {
+                if (isset($book['price']) && $book['price'] > 0) {
+                    $paidBooks[] = $book;
+                } else {
+                    $freeBooks[] = $book;
+                }
+            }
+            
+            Log::info('Filtered books by length', [
+                'book_length' => $preferences['book_length'],
+                'count_after_filter' => count($allBooks)
+            ]);
+        }
+        
+        // Filter by publication year range if specified
+        if (!empty($preferences['publication_year_range'])) {
+            $allBooks = array_merge($paidBooks, $freeBooks);
+            $allBooks = $this->filterByPublicationYear($allBooks, $preferences['publication_year_range']);
+            
+            // Re-separate after year filtering
+            $paidBooks = [];
+            $freeBooks = [];
+            
+            foreach ($allBooks as $book) {
+                if (isset($book['price']) && $book['price'] > 0) {
+                    $paidBooks[] = $book;
+                } else {
+                    $freeBooks[] = $book;
+                }
+            }
+            
+            Log::info('Filtered books by publication year', [
+                'year_range' => $preferences['publication_year_range'],
+                'count_after_filter' => count($allBooks)
+            ]);
+        }
+        
+        // Limit to ~50 books each (total up to 100 books)
+        $paidBooks = array_slice($paidBooks, 0, 50);
+        $freeBooks = array_slice($freeBooks, 0, 50);
+        
+        // Combine: paid books first, then free books
+        $books = array_merge($paidBooks, $freeBooks);
+        
+        Log::info('Separated paid and free books', [
+            'paid_count' => count($paidBooks),
+            'free_count' => count($freeBooks),
+            'total_count' => count($books)
+        ]);
+        
         // If no results, try simpler fallback searches
         if (empty($books)) {
             Log::warning('No books found for query, trying fallback searches', ['query' => $query]);
-
-            // Try just "books" in both languages
-            $books = $this->searchBooks('كتب books', 20);
-
-            // If still no results, try very general search
-            if (empty($books)) {
-                $books = $this->searchBooks('literature أدب', 20);
+            
+            // Try just "books" in the selected language
+            $fallbackQuery = $language === 'en' ? 'books' : 'كتب';
+            $allBooks = $this->searchBooks($fallbackQuery, 40, $language);
+            
+            // Separate again
+            $paidBooks = [];
+            $freeBooks = [];
+            
+            foreach ($allBooks as $book) {
+                if (isset($book['price'])) {
+                    if ($book['price'] == 0) {
+                        $freeBooks[] = $book;
+                    } else {
+                        $paidBooks[] = $book;
+                    }
+                } else {
+                    $freeBooks[] = $book;
+                }
             }
+            
+            $paidBooks = array_slice($paidBooks, 0, 50);
+            $freeBooks = array_slice($freeBooks, 0, 50);
+            $books = array_merge($paidBooks, $freeBooks);
         }
-
+        
         return $books;
+    }
+    
+    /**
+     * Filter books by book length (page count)
+     * 
+     * @param array $books
+     * @param string $bookLength ('short', 'medium', 'long')
+     * @return array
+     */
+    protected function filterByBookLength($books, $bookLength)
+    {
+        $bookLength = strtolower(trim($bookLength));
+        
+        return array_filter($books, function($book) use ($bookLength) {
+            $pageCount = $book['page_count'] ?? 0;
+            
+            // Skip books without page count info
+            if (empty($pageCount) || $pageCount == 0) {
+                return true; // Include books without page count
+            }
+            
+            switch ($bookLength) {
+                case 'short':
+                    // Less than 200 pages
+                    return $pageCount < 200;
+                    
+                case 'medium':
+                    // 200-400 pages
+                    return $pageCount >= 200 && $pageCount <= 400;
+                    
+                case 'long':
+                    // More than 400 pages
+                    return $pageCount > 400;
+                    
+                default:
+                    return true;
+            }
+        });
+    }
+    
+    /**
+     * Filter books by publication year range
+     * 
+     * @param array $books
+     * @param string $yearRange ('recent', 'modern', 'classic')
+     * @return array
+     */
+    protected function filterByPublicationYear($books, $yearRange)
+    {
+        $currentYear = date('Y');
+        $yearRange = strtolower(trim($yearRange));
+        
+        return array_filter($books, function($book) use ($yearRange, $currentYear) {
+            $publishedDate = $book['published_date'] ?? '';
+            
+            // Skip books without publication date
+            if (empty($publishedDate)) {
+                return true; // Include books without dates
+            }
+            
+            // Extract year from published_date (could be "2020", "2020-01-01", etc.)
+            preg_match('/(\d{4})/', $publishedDate, $matches);
+            if (empty($matches)) {
+                return true; // Include if we can't parse the year
+            }
+            
+            $year = (int) $matches[1];
+            
+            switch ($yearRange) {
+                case 'recent':
+                    // Last 5 years
+                    return $year >= ($currentYear - 5);
+                    
+                case 'modern':
+                    // 2000-2020
+                    return $year >= 2000 && $year <= 2020;
+                    
+                case 'classic':
+                    // Before 2000
+                    return $year < 2000;
+                    
+                default:
+                    return true;
+            }
+        });
     }
 }
