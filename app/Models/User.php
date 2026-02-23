@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -21,6 +20,7 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'role',
     ];
 
     /**
@@ -47,6 +47,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Check if the user is an admin.
+     */
+    public function isAdmin(): bool
+    {
+        return $this->role === 'admin';
+    }
+
+    /**
      * Get the user's preferences.
      */
     public function preferences()
@@ -60,5 +68,13 @@ class User extends Authenticatable
     public function recommendedBooks()
     {
         return $this->hasMany(RecommendedBook::class);
+    }
+
+    /**
+     * Get the user's API usage logs.
+     */
+    public function apiUsageLogs()
+    {
+        return $this->hasMany(ApiUsageLog::class);
     }
 }

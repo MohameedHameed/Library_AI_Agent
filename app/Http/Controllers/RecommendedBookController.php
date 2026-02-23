@@ -24,6 +24,7 @@ class RecommendedBookController extends Controller
     {
         $user = Auth::user();
         $recommendations = RecommendedBook::where('user_id', $user->id)
+            ->whereDoesntHave('favorites') // hide books already added to Favorites
             ->orderBy('score', 'desc')
             ->orderBy('created_at', 'desc')
             ->get();
@@ -88,14 +89,42 @@ class RecommendedBookController extends Controller
                 ->with('error', 'لم نتمكن من العثور على توصيات مناسبة. جرب تعديل تفضيلاتك.');
         }
 
+        // ─── Exclude books the user has already favorited ───────────────
+        // Collect all api_ids that are in the user's favorites
+        $favoritedApiIds = \App\Models\FavoriteBook::where('favorite_books.user_id', $user->id)
+            ->join('recommended_books_tables', 'favorite_books.recommended_book_id', '=', 'recommended_books_tables.id')
+            ->pluck('recommended_books_tables.book_api_id')
+            ->filter()
+            ->map(fn($id) => strtolower(trim($id)))
+            ->toArray();
+
+        $beforeCount = count($books);
+        $books = array_filter($books, function ($book) use ($favoritedApiIds) {
+            $apiId = strtolower(trim($book['api_id'] ?? ''));
+            return !in_array($apiId, $favoritedApiIds, true);
+        });
+        $books = array_values($books); // re-index
+
+        Log::info('Excluded favorited books from recommendations', [
+            'before' => $beforeCount,
+            'after'  => count($books),
+            'excluded_count' => $beforeCount - count($books),
+        ]);
+
+        if (empty($books)) {
+            return redirect()->route('recommendations.index')
+                ->with('info', 'جميع الكتب المقترحة موجودة في مفضلتك بالفعل. جرب تعديل تفضيلاتك للحصول على كتب مختلفة.');
+        }
+        // ────────────────────────────────────────────────────────────────
+
         // Save new recommendations to database
         foreach ($books as $index => $book) {
             RecommendedBook::create([
-                'user_id' => $user->id,
+                'user_id'     => $user->id,
                 'book_api_id' => $book['api_id'],
-                'book_data' => $book,
-                'source' => 'ai_recommendation',
-                'score' => 100 - $index, // Higher score for earlier results
+                'book_data'   => $book,
+                'source'      => 'ai_recommendation',
+                'score'       => 100 - $index, // Higher score for earlier results
             ]);
         }
 

@@ -60,4 +60,24 @@ Route::middleware('auth')->group(function () {
     Route::delete('/favorites/{id}', [App\Http\Controllers\FavoriteBookController::class, 'destroy'])->name('favorites.destroy');
 });
 
+// ─── Admin Routes ───────────────────────────────────────────
+Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
+    Route::get('/', [\App\Http\Controllers\AdminController::class, 'dashboard'])->name('dashboard');
+
+    // API Settings
+    Route::get('/api-settings', [\App\Http\Controllers\AdminController::class, 'apiSettings'])->name('api-settings');
+    Route::patch('/api-settings/{setting}/approve', [\App\Http\Controllers\AdminController::class, 'approveApi'])->name('api-settings.approve');
+    Route::patch('/api-settings/{setting}/disable', [\App\Http\Controllers\AdminController::class, 'disableApi'])->name('api-settings.disable');
+    Route::patch('/api-settings/{setting}/pending', [\App\Http\Controllers\AdminController::class, 'setPendingApi'])->name('api-settings.pending');
+    Route::patch('/api-settings/{setting}', [\App\Http\Controllers\AdminController::class, 'updateApiSetting'])->name('api-settings.update');
+
+    // Usage Logs
+    Route::get('/usage-logs', [\App\Http\Controllers\AdminController::class, 'usageLogs'])->name('usage-logs');
+
+    // Users
+    Route::get('/users', [\App\Http\Controllers\AdminController::class, 'users'])->name('users');
+    Route::patch('/users/{user}/promote', [\App\Http\Controllers\AdminController::class, 'promoteUser'])->name('users.promote');
+    Route::patch('/users/{user}/demote', [\App\Http\Controllers\AdminController::class, 'demoteUser'])->name('users.demote');
+});
+
 require __DIR__ . '/auth.php';

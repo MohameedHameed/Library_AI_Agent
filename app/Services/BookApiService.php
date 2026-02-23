@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\AdminApiSetting;
+use App\Models\ApiUsageLog;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -11,6 +14,61 @@ class BookApiService
     protected $openLibraryUrl = 'https://openlibrary.org';
     protected $gutenbergUrl = 'https://gutendex.com';
     protected $googleBooksUrl = 'https://www.googleapis.com/books/v1';
+
+    /**
+     * Log an API call to the api_usage_logs table.
+     */
+    protected function logUsage(string $apiSource, string $query, string $action, bool $success, int $resultsCount, int $responseTimeMs, ?string $errorMessage = null): void
+    {
+        try {
+            ApiUsageLog::create([
+                'user_id'          => Auth::id(),
+                'api_source'       => $apiSource,
+                'query'            => $query,
+                'action'           => $action,
+                'success'          => $success,
+                'results_count'    => $resultsCount,
+                'response_time_ms' => $responseTimeMs,
+                'error_message'    => $errorMessage,
+                'ip_address'       => request()->ip(),
+            ]);
+        } catch (\Exception $e) {
+            Log::warning('Failed to write API usage log: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Resolve the Google Books API key: DB setting takes priority over .env.
+     */
+    protected function resolveGoogleApiKey(): ?string
+    {
+        $dbSetting = Cache::remember('admin_google_books_setting', 300, function () {
+            return AdminApiSetting::where('api_name', 'google_books')
+                ->where('status', 'approved')
+                ->first();
+        });
+
+        if ($dbSetting && !empty($dbSetting->api_key)) {
+            return $dbSetting->api_key;
+        }
+
+        return env('GOOGLE_BOOKS_API_KEY');
+    }
+
+    /**
+     * Check whether a given API is approved in the admin settings.
+     * Falls back to ENABLED if no record exists yet (so the app works before seeding).
+     * Result is cached for 5 minutes to avoid a DB hit on every search.
+     */
+    protected function isApiEnabled(string $apiName): bool
+    {
+        $status = Cache::remember('admin_api_status_' . $apiName, 300, function () use ($apiName) {
+            $setting = AdminApiSetting::where('api_name', $apiName)->first();
+            return $setting ? $setting->status : 'approved'; // default: approved if no record
+        });
+
+        return $status === 'approved';
+    }
 
     /**
      * Search for books by query using OpenLibrary, Gutenberg, and Google Books
@@ -38,27 +96,39 @@ class BookApiService
 
                 // Search OpenLibrary (fastest, try first)
                 try {
-                    $openLibraryBooks = $this->searchOpenLibrary($query, $maxResults, $language);
-                    Log::info('OpenLibrary results', ['count' => count($openLibraryBooks)]);
-                    $books = array_merge($books, $openLibraryBooks);
+                    if ($this->isApiEnabled('openlibrary')) {
+                        $openLibraryBooks = $this->searchOpenLibrary($query, $maxResults, $language);
+                        Log::info('OpenLibrary results', ['count' => count($openLibraryBooks)]);
+                        $books = array_merge($books, $openLibraryBooks);
+                    } else {
+                        Log::info('OpenLibrary skipped — disabled by admin.');
+                    }
                 } catch (\Exception $e) {
                     Log::warning('OpenLibrary search failed', ['error' => $e->getMessage()]);
                 }
 
                 // Search Gutenberg
                 try {
-                    $gutenbergBooks = $this->searchGutenberg($query, $maxResults, $language);
-                    Log::info('Gutenberg results', ['count' => count($gutenbergBooks)]);
-                    $books = array_merge($books, $gutenbergBooks);
+                    if ($this->isApiEnabled('gutenberg')) {
+                        $gutenbergBooks = $this->searchGutenberg($query, $maxResults, $language);
+                        Log::info('Gutenberg results', ['count' => count($gutenbergBooks)]);
+                        $books = array_merge($books, $gutenbergBooks);
+                    } else {
+                        Log::info('Gutenberg skipped — disabled by admin.');
+                    }
                 } catch (\Exception $e) {
                     Log::warning('Gutenberg search failed', ['error' => $e->getMessage()]);
                 }
 
-                // Search Google Books (excellent Arabic coverage)
+                // Search Google Books
                 try {
-                    $googleBooks = $this->searchGoogleBooks($query, $maxResults, $language);
-                    Log::info('Google Books results', ['count' => count($googleBooks)]);
-                    $books = array_merge($books, $googleBooks);
+                    if ($this->isApiEnabled('google_books')) {
+                        $googleBooks = $this->searchGoogleBooks($query, $maxResults, $language);
+                        Log::info('Google Books results', ['count' => count($googleBooks)]);
+                        $books = array_merge($books, $googleBooks);
+                    } else {
+                        Log::info('Google Books skipped — disabled by admin.');
+                    }
                 } catch (\Exception $e) {
                     Log::warning('Google Books search failed', ['error' => $e->getMessage()]);
                 }
@@ -88,6 +158,7 @@ class BookApiService
      */
     protected function searchOpenLibrary($query, $limit = 10, $language = 'ar')
     {
+        $startTime = microtime(true);
         try {
             // Map language codes: 'ar' => 'ara', 'en' => 'eng'
             $langCode = $language === 'en' ? 'eng' : 'ara';
@@ -109,13 +180,14 @@ class BookApiService
                     'count' => count($results)
                 ]);
 
-                // If we got results, return them
                 if (!empty($results)) {
-                    return $this->formatOpenLibraryResults($results);
+                    $formatted = $this->formatOpenLibraryResults($results);
+                    $this->logUsage('openlibrary', $query, 'search', true, count($formatted), (int)((microtime(true) - $startTime) * 1000));
+                    return $formatted;
                 }
             }
 
-            // If no results with language filter, try without language filter
+            // Retry without language filter
             Log::info('No results with language filter, trying without filter');
             $response = Http::timeout(10)->get("{$this->openLibraryUrl}/search.json", [
                 'q' => $query,
@@ -124,16 +196,16 @@ class BookApiService
 
             if ($response->successful()) {
                 $data = $response->json();
-                Log::info('OpenLibrary search without filter', [
-                    'query' => $query,
-                    'count' => count($data['docs'] ?? [])
-                ]);
-                return $this->formatOpenLibraryResults($data['docs'] ?? []);
+                $formatted = $this->formatOpenLibraryResults($data['docs'] ?? []);
+                $this->logUsage('openlibrary', $query, 'search', true, count($formatted), (int)((microtime(true) - $startTime) * 1000));
+                return $formatted;
             }
 
+            $this->logUsage('openlibrary', $query, 'search', false, 0, (int)((microtime(true) - $startTime) * 1000), 'HTTP request failed');
             Log::warning('OpenLibrary search failed');
             return [];
         } catch (\Exception $e) {
+            $this->logUsage('openlibrary', $query, 'search', false, 0, (int)((microtime(true) - $startTime) * 1000), $e->getMessage());
             Log::error('OpenLibrary search error: ' . $e->getMessage());
             return [];
         }
@@ -149,6 +221,7 @@ class BookApiService
      */
     protected function searchGutenberg($query, $limit = 10, $language = 'ar')
     {
+        $startTime = microtime(true);
         try {
             // Gutenberg uses 'ar' for Arabic, 'en' for English
             $langCode = $language === 'en' ? 'en' : 'ar';
@@ -169,13 +242,14 @@ class BookApiService
                     'count' => count($results)
                 ]);
 
-                // If we got results, return them
                 if (!empty($results)) {
-                    return $this->formatGutenbergResults($results);
+                    $formatted = $this->formatGutenbergResults($results);
+                    $this->logUsage('gutenberg', $query, 'search', true, count($formatted), (int)((microtime(true) - $startTime) * 1000));
+                    return $formatted;
                 }
             }
 
-            // If no results with language filter, try without language filter
+            // Retry without language filter
             Log::info('No results from Gutenberg with language filter, trying without filter');
             $response = Http::timeout(10)->get("{$this->gutenbergUrl}/books", [
                 'search' => $query,
@@ -184,16 +258,16 @@ class BookApiService
             if ($response->successful()) {
                 $data = $response->json();
                 $results = array_slice($data['results'] ?? [], 0, $limit);
-                Log::info('Gutenberg search without filter', [
-                    'query' => $query,
-                    'count' => count($results)
-                ]);
-                return $this->formatGutenbergResults($results);
+                $formatted = $this->formatGutenbergResults($results);
+                $this->logUsage('gutenberg', $query, 'search', true, count($formatted), (int)((microtime(true) - $startTime) * 1000));
+                return $formatted;
             }
 
+            $this->logUsage('gutenberg', $query, 'search', false, 0, (int)((microtime(true) - $startTime) * 1000), 'HTTP request failed');
             Log::warning('Gutenberg search failed');
             return [];
         } catch (\Exception $e) {
+            $this->logUsage('gutenberg', $query, 'search', false, 0, (int)((microtime(true) - $startTime) * 1000), $e->getMessage());
             Log::error('Gutenberg search error: ' . $e->getMessage());
             return [];
         }
@@ -209,8 +283,9 @@ class BookApiService
      */
     protected function searchGoogleBooks($query, $limit = 10, $language = 'ar')
     {
+        $startTime = microtime(true);
         try {
-            $apiKey = env('GOOGLE_BOOKS_API_KEY');
+            $apiKey = $this->resolveGoogleApiKey();
 
             // If no API key, skip Google Books to avoid rate limiting
             if (empty($apiKey)) {
@@ -249,7 +324,9 @@ class BookApiService
 
                 // If we got results, return them
                 if (!empty($results)) {
-                    return $this->formatGoogleBooksResults($results);
+                    $formatted = $this->formatGoogleBooksResults($results);
+                    $this->logUsage('google_books', $query, 'search', true, count($formatted), (int)((microtime(true) - $startTime) * 1000));
+                    return $formatted;
                 }
             }
 
@@ -271,19 +348,19 @@ class BookApiService
 
             if ($response->successful()) {
                 $data = $response->json();
-                Log::info('Google Books search without filter', [
-                    'query' => $query,
-                    'count' => count($data['items'] ?? [])
-                ]);
-                return $this->formatGoogleBooksResults($data['items'] ?? []);
+                $formatted = $this->formatGoogleBooksResults($data['items'] ?? []);
+                $this->logUsage('google_books', $query, 'search', true, count($formatted), (int)((microtime(true) - $startTime) * 1000));
+                return $formatted;
             }
 
+            $this->logUsage('google_books', $query, 'search', false, 0, (int)((microtime(true) - $startTime) * 1000), 'HTTP ' . $response->status());
             Log::warning('Google Books search failed', [
                 'status' => $response->status(),
                 'body' => $response->body()
             ]);
             return [];
         } catch (\Exception $e) {
+            $this->logUsage('google_books', $query, 'search', false, 0, (int)((microtime(true) - $startTime) * 1000), $e->getMessage());
             Log::error('Google Books search error: ' . $e->getMessage(), [
                 'query' => $query,
                 'exception' => get_class($e)
