@@ -1,7 +1,7 @@
 <x-app-layout>
     <x-slot name="header">
         <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-            إعداد تفضيلاتك
+            {{ __('messages.setup_preferences') }}
         </h2>
     </x-slot>
 
@@ -10,8 +10,8 @@
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-8">
                     <div class="mb-6">
-                        <h3 class="text-2xl font-bold text-gray-900 mb-2">مرحباً بك!</h3>
-                        <p class="text-gray-600">ساعدنا في التعرف على اهتماماتك القرائية لنقدم لك أفضل التوصيات</p>
+                        <h3 class="text-2xl font-bold text-gray-900 mb-2">{{ __('messages.welcome') }}</h3>
+                        <p class="text-gray-600">{{ __('messages.get_personalized_message') }}</p>
                     </div>
 
                     <form method="POST" action="{{ route('preferences.store') }}" class="space-y-6">
@@ -20,8 +20,8 @@
                         <!-- Favorite Genres -->
                         <div>
                             <label for="favorite_genres" class="block text-sm font-medium text-gray-700 mb-2">
-                                الأنواع المفضلة
-                                <span class="text-gray-500 text-xs">(اختر واحد أو أكثر)</span>
+                                {{ __('messages.favorite_genres') }}
+                                <span class="text-gray-500 text-xs">{{ __('messages.select_one_or_more') }}</span>
                             </label>
                             <select name="favorite_genres[]" id="favorite_genres" multiple
                                 class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white"
@@ -39,8 +39,8 @@
                                     {{ in_array('فلسفة', old('favorite_genres', [])) ? 'selected' : '' }}>فلسفة -
                                     Philosophy</option>
                                 <option value="أدب"
-                                    {{ in_array('أدب', old('favorite_genres', [])) ? 'selected' : '' }}>أدب - Literature
-                                </option>
+                                    {{ in_array('أدب', old('favorite_genres', [])) ? 'selected' : '' }}>أدب -
+                                    Literature</option>
                                 <option value="شعر"
                                     {{ in_array('شعر', old('favorite_genres', [])) ? 'selected' : '' }}>شعر - Poetry
                                 </option>
@@ -66,14 +66,14 @@
                             @error('favorite_genres')
                                 <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                             @enderror
-                            <p class="mt-1 text-xs text-gray-500">اضغط Ctrl (أو Cmd) لاختيار أكثر من نوع</p>
+                            <p class="mt-1 text-xs text-gray-500">{{ __('messages.press_ctrl_hint') }}</p>
                         </div>
 
                         <!-- Preferred Theme -->
                         <div>
                             <label for="preferred_theme" class="block text-sm font-medium text-gray-700 mb-2">
-                                المواضيع المفضلة
-                                <span class="text-gray-500 text-xs">(اختر واحد أو أكثر)</span>
+                                {{ __('messages.preferred_themes') }}
+                                <span class="text-gray-500 text-xs">{{ __('messages.select_one_or_more') }}</span>
                             </label>
                             <select name="preferred_theme[]" id="preferred_theme" multiple
                                 class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white"
@@ -118,44 +118,56 @@
                             @error('preferred_theme')
                                 <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                             @enderror
-                            <p class="mt-1 text-xs text-gray-500">اضغط Ctrl (أو Cmd) لاختيار أكثر من موضوع</p>
+                            <p class="mt-1 text-xs text-gray-500">{{ __('messages.press_ctrl_hint') }}</p>
                         </div>
 
-                        <!-- Difficulty Level -->
+                        <!-- Publication Year Range -->
                         <div>
-                            <label for="difficulty_level" class="block text-sm font-medium text-gray-700 mb-2">
-                                مستوى الصعوبة
-                                <span class="text-gray-500 text-xs">(اختياري)</span>
+                            <label for="publication_year_range" class="block text-sm font-medium text-gray-700 mb-2">
+                                {{ __('messages.publication_year_range') }}
+                                <span class="text-gray-500 text-xs">({{ __('messages.optional') ?? 'اختياري' }})</span>
                             </label>
-                            <select name="difficulty_level" id="difficulty_level"
+                            <select name="publication_year_range" id="publication_year_range"
                                 class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white">
-                                <option value="">اختر مستوى الصعوبة</option>
-                                <option value="beginner" {{ old('difficulty_level') == 'beginner' ? 'selected' : '' }}>
-                                    مبتدئ - كتب سهلة وبسيطة
+                                <option value="">{{ __('messages.any_year') }}</option>
+                                <option value="recent"
+                                    {{ old('publication_year_range') == 'recent' ? 'selected' : '' }}>
+                                    {{ __('messages.recent_books') }}
                                 </option>
-                                <option value="intermediate"
-                                    {{ old('difficulty_level') == 'intermediate' ? 'selected' : '' }}>
-                                    متوسط - كتب متوسطة التعقيد
+                                <option value="modern"
+                                    {{ old('publication_year_range') == 'modern' ? 'selected' : '' }}>
+                                    {{ __('messages.modern_books') }}
                                 </option>
-                                <option value="advanced" {{ old('difficulty_level') == 'advanced' ? 'selected' : '' }}>
-                                    متقدم - كتب متخصصة ومعقدة
+                                <option value="classic"
+                                    {{ old('publication_year_range') == 'classic' ? 'selected' : '' }}>
+                                    {{ __('messages.classic_books') }}
                                 </option>
                             </select>
-                            @error('difficulty_level')
+                            @error('publication_year_range')
                                 <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                             @enderror
                         </div>
 
-                        <!-- Price Range -->
+                        <!-- Book Length -->
                         <div>
-                            <label for="price_range" class="block text-sm font-medium text-gray-700 mb-2">
-                                النطاق السعري المفضل
-                                <span class="text-gray-500 text-xs">(اختياري)</span>
+                            <label for="book_length" class="block text-sm font-medium text-gray-700 mb-2">
+                                {{ __('messages.book_length') }}
+                                <span class="text-gray-500 text-xs">({{ __('messages.optional') ?? 'اختياري' }})</span>
                             </label>
-                            <input type="text" name="price_range" id="price_range" value="{{ old('price_range') }}"
-                                placeholder="مثال: 0-50، 50-100، 100+"
-                                class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
-                            @error('price_range')
+                            <select name="book_length" id="book_length"
+                                class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white">
+                                <option value="">{{ __('messages.any_length') }}</option>
+                                <option value="short" {{ old('book_length') == 'short' ? 'selected' : '' }}>
+                                    {{ __('messages.short_books') }}
+                                </option>
+                                <option value="medium" {{ old('book_length') == 'medium' ? 'selected' : '' }}>
+                                    {{ __('messages.medium_books') }}
+                                </option>
+                                <option value="long" {{ old('book_length') == 'long' ? 'selected' : '' }}>
+                                    {{ __('messages.long_books') }}
+                                </option>
+                            </select>
+                            @error('book_length')
                                 <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                             @enderror
                         </div>
@@ -164,11 +176,11 @@
                         <div class="flex gap-4 pt-4">
                             <button type="submit"
                                 class="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all transform hover:scale-[1.02] shadow-md">
-                                حفظ التفضيلات
+                                {{ __('messages.save_preferences') }}
                             </button>
                             <a href="{{ route('dashboard') }}"
                                 class="px-6 py-3 border-2 border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-all">
-                                تخطي
+                                {{ __('messages.skip') }}
                             </a>
                         </div>
 
@@ -181,10 +193,9 @@
                                         clip-rule="evenodd" />
                                 </svg>
                                 <div>
-                                    <h4 class="text-sm font-semibold text-blue-900 mb-1">نصيحة</h4>
+                                    <h4 class="text-sm font-semibold text-blue-900 mb-1">{{ __('messages.tip') }}</h4>
                                     <p class="text-sm text-blue-800">
-                                        كلما كانت تفضيلاتك أكثر تفصيلاً، كانت توصياتنا أكثر دقة وملاءمة لك. يمكنك تعديل
-                                        هذه التفضيلات في أي وقت.
+                                        {{ __('messages.preferences_tip') }}
                                     </p>
                                 </div>
                             </div>
