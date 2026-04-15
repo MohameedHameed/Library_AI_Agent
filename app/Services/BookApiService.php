@@ -881,18 +881,58 @@ class BookApiService
             'total_count' => count($books)
         ]);
         
-        // If no results, try simpler fallback searches
+        // If no results, try each individual keyword separately before using a generic fallback
         if (empty($books)) {
-            Log::warning('No books found for query, trying fallback searches', ['query' => $query]);
-            
-            // Try just "books" in the selected language
-            $fallbackQuery = $language === 'en' ? 'books' : 'كتب';
-            $allBooks = $this->searchBooks($fallbackQuery, 40, $language);
-            
-            // Separate again
+            Log::warning('No books found for combined query, trying individual keywords', ['query' => $query]);
+
+            // Reset allBooks so stale data from the main search doesn't bleed in
+            $allBooks = [];
+
+            // Collect individual keywords from genres and themes
+            $individualKeywords = [];
+
+            if (!empty($preferences['favorite_genres'])) {
+                $genreList = array_map('trim', explode(',', $preferences['favorite_genres']));
+                foreach ($genreList as $g) {
+                    if (!empty($g)) {
+                        // Translate if English
+                        $individualKeywords[] = ($language === 'en') ? ($translationMap[$g] ?? $g) : $g;
+                    }
+                }
+            }
+
+            if (!empty($preferences['preferred_theme'])) {
+                $themeList = array_map('trim', explode(',', $preferences['preferred_theme']));
+                foreach ($themeList as $t) {
+                    if (!empty($t)) {
+                        $individualKeywords[] = ($language === 'en') ? ($translationMap[$t] ?? $t) : $t;
+                    }
+                }
+            }
+
+            // Try each keyword individually until we get results
+            foreach ($individualKeywords as $keyword) {
+                Log::info('Trying individual keyword fallback', ['keyword' => $keyword]);
+                $allBooks = $this->searchBooks($keyword, 30, $language);
+                if (!empty($allBooks)) {
+                    Log::info('Individual keyword returned results', ['keyword' => $keyword, 'count' => count($allBooks)]);
+                    break;
+                }
+            }
+
+            // If still no results, use sensible popular topics (NOT the word "books")
+            if (empty($allBooks)) {
+                $fallbackQuery = $language === 'en'
+                    ? 'fiction history science philosophy biography'
+                    : 'روايات تاريخ علوم أدب سيرة ذاتية';
+                Log::warning('All individual keywords failed, using generic popular topics fallback', ['fallback' => $fallbackQuery]);
+                $allBooks = $this->searchBooks($fallbackQuery, 30, $language);
+            }
+
+            // Separate into paid / free
             $paidBooks = [];
             $freeBooks = [];
-            
+
             foreach ($allBooks as $book) {
                 if (isset($book['price'])) {
                     if ($book['price'] == 0) {
@@ -904,7 +944,7 @@ class BookApiService
                     $freeBooks[] = $book;
                 }
             }
-            
+
             $paidBooks = array_slice($paidBooks, 0, 50);
             $freeBooks = array_slice($freeBooks, 0, 50);
             $books = array_merge($paidBooks, $freeBooks);
