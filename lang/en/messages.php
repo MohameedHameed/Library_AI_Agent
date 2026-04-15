@@ -105,11 +105,11 @@ return [
     'english' => 'English',
     
     // Additional Recommendations
-    'get_new_recommendations' => '🤖 Get New Recommendations',
+    'get_new_recommendations' => 'Get New Recommendations',
     'no_recommendations_yet' => 'No recommendations yet',
     'get_personalized_message' => 'Get personalized book recommendations based on your reading preferences. We\'ll help you discover amazing books that match your interests!',
-    'get_recommendations_now' => '🎯 Get Recommendations Now',
-    'edit_preferences' => '⚙️ Edit Preferences',
+    'get_recommendations_now' => 'Get Recommendations Now',
+    'edit_preferences' => 'Edit Preferences',
     'total_recommendations' => 'Total Recommendations',
     'user_saved' => 'Saved Books',
     'title_unavailable' => 'Title Unavailable',
@@ -126,7 +126,7 @@ return [
     'price_range_label' => 'Price Range (optional)',
     'price_placeholder' => 'e.g., 50-200',
     'edit_your_preferences' => 'Edit Your Preferences',
-    'update_preferences_title' => 'Update Your Preferences 🎯',
+    'update_preferences_title' => 'Update Your Preferences',
     'update_preferences_subtitle' => 'Update your reading interests to get better recommendations',
     'select_one_or_more' => '(Select one or more)',
     'press_ctrl_hint' => 'Press Ctrl (or Cmd) to select multiple options',

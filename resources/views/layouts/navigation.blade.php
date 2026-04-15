@@ -55,10 +55,10 @@
 
                     <x-slot name="content">
                         <x-dropdown-link :href="route('language.switch', 'ar')">
-                            🇸🇦 العربية
+                            العربية
                         </x-dropdown-link>
                         <x-dropdown-link :href="route('language.switch', 'en')">
-                            🇬🇧 English
+                            English
                         </x-dropdown-link>
                     </x-slot>
                 </x-dropdown>

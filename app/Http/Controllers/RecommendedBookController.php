@@ -131,7 +131,7 @@ class RecommendedBookController extends Controller
         Log::info('Saved recommendations to database', ['count' => count($books)]);
 
         return redirect()->route('recommendations.index')
-            ->with('success', 'تم إنشاء ' . count($books) . ' توصية جديدة بناءً على تفضيلاتك المحدثة! 🎉');
+            ->with('success', 'تم إنشاء ' . count($books) . ' توصية جديدة بناءً على تفضيلاتك المحدثة!');
     }
 
     /**
