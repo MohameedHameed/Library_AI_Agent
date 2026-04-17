@@ -164,7 +164,7 @@ class BookApiService
             $langCode = $language === 'en' ? 'eng' : 'ara';
             
             // First try with language filter
-            $response = Http::timeout(10)->get("{$this->openLibraryUrl}/search.json", [
+            $response = Http::withoutVerifying()->timeout(10)->get("{$this->openLibraryUrl}/search.json", [
                 'q' => $query,
                 'limit' => $limit,
                 'language' => $langCode,
@@ -189,7 +189,7 @@ class BookApiService
 
             // Retry without language filter
             Log::info('No results with language filter, trying without filter');
-            $response = Http::timeout(10)->get("{$this->openLibraryUrl}/search.json", [
+            $response = Http::withoutVerifying()->timeout(10)->get("{$this->openLibraryUrl}/search.json", [
                 'q' => $query,
                 'limit' => $limit,
             ]);
@@ -227,7 +227,7 @@ class BookApiService
             $langCode = $language === 'en' ? 'en' : 'ar';
             
             // First try with language filter
-            $response = Http::timeout(10)->get("{$this->gutenbergUrl}/books", [
+            $response = Http::withoutVerifying()->timeout(10)->get("{$this->gutenbergUrl}/books", [
                 'search' => $query,
                 'languages' => $langCode,
             ]);
@@ -251,7 +251,7 @@ class BookApiService
 
             // Retry without language filter
             Log::info('No results from Gutenberg with language filter, trying without filter');
-            $response = Http::timeout(10)->get("{$this->gutenbergUrl}/books", [
+            $response = Http::withoutVerifying()->timeout(10)->get("{$this->gutenbergUrl}/books", [
                 'search' => $query,
             ]);
 
@@ -310,7 +310,7 @@ class BookApiService
                 $params['filter'] = 'paid-ebooks';
             }
             
-            $response = Http::timeout(10)->get("{$this->googleBooksUrl}/volumes", $params);
+            $response = Http::withoutVerifying()->timeout(10)->get("{$this->googleBooksUrl}/volumes", $params);
 
             if ($response->successful()) {
                 $data = $response->json();
@@ -344,7 +344,7 @@ class BookApiService
                 $params['filter'] = 'paid-ebooks';
             }
             
-            $response = Http::timeout(10)->get("{$this->googleBooksUrl}/volumes", $params);
+            $response = Http::withoutVerifying()->timeout(10)->get("{$this->googleBooksUrl}/volumes", $params);
 
             if ($response->successful()) {
                 $data = $response->json();
@@ -407,7 +407,7 @@ class BookApiService
     protected function getOpenLibraryDetails($workId)
     {
         try {
-            $response = Http::timeout(10)->get("{$this->openLibraryUrl}/works/{$workId}.json");
+            $response = Http::withoutVerifying()->timeout(10)->get("{$this->openLibraryUrl}/works/{$workId}.json");
 
             if ($response->successful()) {
                 $data = $response->json();
@@ -430,7 +430,7 @@ class BookApiService
     protected function getGutenbergDetails($bookId)
     {
         try {
-            $response = Http::timeout(10)->get("{$this->gutenbergUrl}/books/{$bookId}");
+            $response = Http::withoutVerifying()->timeout(10)->get("{$this->gutenbergUrl}/books/{$bookId}");
 
             if ($response->successful()) {
                 $data = $response->json();
