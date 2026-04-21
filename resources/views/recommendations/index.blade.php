@@ -111,8 +111,7 @@
                         <div class="flex items-center justify-between">
                             <div>
                                 <p class="text-purple-100 text-sm font-medium">{{ __('messages.user_saved') }}</p>
-                                <p class="text-3xl font-bold mt-1">
-                                    {{ $recommendations->where('source', 'user_saved')->count() }}</p>
+                                <p class="text-3xl font-bold mt-1">{{ $favoritesCount }}</p>
                             </div>
                             <div class="bg-purple-400 bg-opacity-30 rounded-full p-3">
                                 <svg class="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">

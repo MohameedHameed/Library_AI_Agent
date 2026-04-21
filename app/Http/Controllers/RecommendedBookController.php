@@ -29,7 +29,10 @@ class RecommendedBookController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
-        return view('recommendations.index', compact('recommendations'));
+        // Count books the user has actually favorited (separate from recommendations list)
+        $favoritesCount = \App\Models\FavoriteBook::where('user_id', $user->id)->count();
+
+        return view('recommendations.index', compact('recommendations', 'favoritesCount'));
     }
 
     /**
