@@ -42,6 +42,9 @@
             {{ $slot }}
         </main>
     </div>
+
+    {{-- Chatbot Side Panel --}}
+    @include('components.chatbot-panel')
 </body>
 
 </html>

@@ -58,6 +58,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/favorites', [App\Http\Controllers\FavoriteBookController::class, 'index'])->name('favorites.index');
     Route::post('/favorites', [App\Http\Controllers\FavoriteBookController::class, 'store'])->name('favorites.store');
     Route::delete('/favorites/{id}', [App\Http\Controllers\FavoriteBookController::class, 'destroy'])->name('favorites.destroy');
+
+    // Chatbot route
+    Route::post('/chatbot/send', [App\Http\Controllers\ChatbotController::class, 'sendMessage'])->name('chatbot.send');
 });
 
 // ─── Admin Routes ───────────────────────────────────────────
